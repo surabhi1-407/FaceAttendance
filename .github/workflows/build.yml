@@ -7,6 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fix libtinfo5 issue
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtinfo6
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
+
       - name: Build APK
         uses: digreatbrian/buildozer-action@v2
         with:
