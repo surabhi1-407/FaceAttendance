@@ -12,9 +12,6 @@ from kivy.utils import get_color_from_hex
 from kivy.metrics import dp
 from kivy.properties import NumericProperty, ObjectProperty
 from kivy.clock import Clock
-import os
-import sqlite3
-import time
 from datetime import datetime
 from kivy.clock import Clock # <<< ADDED (Optional: for potential threading updates)
 from kivy.uix.popup import Popup
@@ -30,23 +27,9 @@ from kivy.uix.camera import Camera
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.logger import Logger # Use Kivy's logger
-
-
-# Make sure necessary imports like platform are available if using user_data_dir
 from kivy.utils import platform
-import insightface
-import numpy as np
-from insightface.app import FaceAnalysis
-import cv2 # <<< ADDED for image loading
-import requests
 
 
-
-MODEL_NAME = 'buffalo_l'
-PROVIDERS = ['CPUExecutionProvider'] # Change to ['CUDAExecutionProvider', 'CPUExecutionProvider'] for GPU
-
-RECOGNITION_THRESHOLD = 0.5 
-DATABASE_PATH = 'employees.db'
 
 ADMIN_PASSWORD = "oye" 
 BACKEND_URL = "http://192.168.29.31:8000"
@@ -54,35 +37,6 @@ REGISTER_ENDPOINT = f"{BACKEND_URL}/register"
 RECOGNIZE_ENDPOINT = f"{BACKEND_URL}/recognize_attendance"
 ATTENDANCE_LOG_ENDPOINT = f"{BACKEND_URL}/attendance_log"
 
-
-# <<< ADDED: Global variable to hold the initialized model (initialize lazily)
-_face_analyzer = None
-def initialize_insightface():
-    """Initializes the InsightFace model if not already done."""
-    global _face_analyzer
-    if _face_analyzer is None:
-        print("Initializing InsightFace model (this might take a moment)...")
-        try:
-            _face_analyzer = insightface.app.FaceAnalysis(
-                name=MODEL_NAME,
-                allowed_modules=['detection', 'recognition'],
-                providers=PROVIDERS
-            )
-            _face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
-            print("InsightFace model initialized successfully.")
-        except Exception as e:
-            print(f"FATAL ERROR initializing InsightFace model: {e}")
-            print("Please ensure 'onnxruntime' or 'onnxruntime-gpu' is installed and providers are correct.")
-            # Optionally raise the exception or handle it gracefully in the app
-            _face_analyzer = None # Ensure it's None if initialization failed
-    return _face_analyzer
-
-
-
-try:
-    from PIL import Image as PILImage
-except ImportError:
-    print("PIL not available. Image conversion to JPEG may not work.")
 
 class ResponsiveButton(Button):
     min_height = NumericProperty(dp(60))
