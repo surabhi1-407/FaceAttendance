@@ -194,7 +194,7 @@ class AttendanceScreen(Screen):
             with self.camera.canvas.before:
                 from kivy.graphics import PushMatrix, Rotate
                 PushMatrix()
-                self.rot = Rotate(angle=-90, origin=self.camera.center)
+                self.rot = Rotate(angle=90, origin=self.camera.center)
             with self.camera.canvas.after:
                 from kivy.graphics import PopMatrix
                 PopMatrix()
@@ -252,20 +252,14 @@ class AttendanceScreen(Screen):
         self.result_label.text = 'Status: Ready'
         self.temp_image_path = None
 
-        try:
-            if self.camera:
-                self.camera.play = True
-                self.capture_button.disabled = False
-                Logger.info("AttendanceScreen: Camera started on enter.")
-            else:
-                Logger.error("AttendanceScreen: No camera instance available.")
-                self.capture_button.disabled = True
-                self.result_label.text = "Status: Camera unavailable"
-                self.show_popup("Camera Error", "Camera device could not be initialized.")
-        except Exception as e:
-            Logger.error(f"AttendanceScreen: Failed to start camera: {e}")
+        if self.camera:
+        # Schedule the camera start instead of starting immediately
+            Clock.schedule_once(self.start_camera_safely, 0.1) # Delay by 0.1 seconds
+        else:
+            Logger.error("AttendanceScreen: No camera instance available.")
             self.capture_button.disabled = True
-            self.show_popup("Camera Error", f"Could not start camera: {e}")
+            self.result_label.text = "Status: Camera unavailable"
+            self.show_popup("Camera Error", "Camera device could not be initialized.")
 
 
     def on_leave(self, *args):
@@ -490,7 +484,7 @@ class RegisterScreen(Screen):
             with self.camera.canvas.before:
                 from kivy.graphics import PushMatrix, Rotate
                 PushMatrix()
-                self.rot = Rotate(angle=-90, origin=self.camera.center)
+                self.rot = Rotate(angle=90, origin=self.camera.center)
             with self.camera.canvas.after:
                 from kivy.graphics import PopMatrix
                 PopMatrix()
@@ -577,25 +571,11 @@ class RegisterScreen(Screen):
             return
 
         if not self.camera.play:
-            try:
-                self.camera_container.clear_widgets()
-                self.camera.play = True
-                self.camera_container.add_widget(self.camera)
-                self.camera_button.text = 'Cancel Capture'
-                if self.capture_button:
-                    self.capture_button.disabled = False
-                Logger.info("Camera: Started.")
-            except Exception as e:
-                Logger.error(f"Camera: Error starting camera: {e}")
-                self.show_popup("Camera Error", f"Could not start camera: {e}")
-                self.camera.play = False
-                self.camera_container.clear_widgets()
-                if self.preview.source and self.image_captured:
-                    self.camera_container.add_widget(self.preview)
-                self.camera_button.text = 'Capture Face'
-                if self.capture_button:
-                    self.capture_button.disabled = True
+             # --- Only schedule the start here ---
+            Clock.schedule_once(self.start_register_camera, 0.1)
+            # --- Remove the immediate start logic (try...except block) from here ---
         else:
+            # --- Logic for stopping the camera remains the same ---
             self.camera.play = False
             self.camera_container.clear_widgets()
             if self.preview.source and self.image_captured:
@@ -604,6 +584,31 @@ class RegisterScreen(Screen):
             if self.capture_button:
                 self.capture_button.disabled = True
             Logger.info("Camera: Stopped.")
+
+    def start_register_camera(self, dt):
+         """Starts the camera for the register screen after a delay."""
+         if not self.camera: return # Check if camera exists
+
+         # --- Camera starting logic is now correctly placed here ---
+         try:
+             self.camera_container.clear_widgets() # Clear previous view (like preview)
+             self.camera.play = True # Start the camera
+             self.camera_container.add_widget(self.camera) # Add the camera widget
+             self.camera_button.text = 'Cancel Capture' # Update button text
+             if self.capture_button:
+                 self.capture_button.disabled = False # Enable capture button
+             Logger.info("Camera: Started (Register Screen).")
+         except Exception as e:
+             # --- Error handling remains the same ---
+             Logger.error(f"Camera: Error starting camera (Register Screen): {e}")
+             self.show_popup("Camera Error", f"Could not start camera: {e}")
+             if self.camera: self.camera.play = False # Ensure it's stopped on error
+             self.camera_container.clear_widgets()
+             if self.preview.source and self.image_captured:
+                 self.camera_container.add_widget(self.preview)
+             self.camera_button.text = 'Capture Face'
+             if self.capture_button:
+                 self.capture_button.disabled = True
 
     def capture_photo(self, instance):
         if not self.camera or not self.camera.play:
