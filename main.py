@@ -186,7 +186,7 @@ class AttendanceScreen(Screen):
 
         # Initialize Camera
         try:
-            self.camera = Camera(resolution=(640, 480), play=False, index=0)
+            self.camera = Camera(resolution=(640, 480), play=False, index=1)
         except Exception as e:
             Logger.error(f"AttendanceScreen: Failed to initialize camera: {e}")
             self.camera = None # Flag that camera is unavailable
@@ -495,7 +495,7 @@ class RegisterScreen(Screen):
         # Try index=0 first. If multiple cameras, you might need to adjust.
         # Handle potential camera initialization errors gracefully.
         try:
-            self.camera = Camera(resolution=(640, 480), play=False, index=0)
+            self.camera = Camera(resolution=(640, 480), play=False, index=1)
             # Set texture size explicitly if preview looks stretched/squashed
             # self.camera.texture_size = self.camera.resolution
         except Exception as e:
@@ -987,5 +987,6 @@ class AttendanceApp(App):
 
 if __name__ == '__main__':
     # Set default window size for development
-    Window.size = (600, 800)
+    if platform != 'android':  # Only set window size for desktop
+        Window.size = (600, 800)
     AttendanceApp().run()
