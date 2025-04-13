@@ -13,7 +13,6 @@ from kivy.metrics import dp
 from kivy.properties import NumericProperty, ObjectProperty
 from kivy.clock import Clock
 from datetime import datetime
-from kivy.clock import Clock # <<< ADDED (Optional: for potential threading updates)
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 import os
@@ -21,8 +20,6 @@ import time
 import requests # For making API calls
 import threading # To run network calls without blocking UI
 from PIL import Image as PILImage # Still needed for potential preview handling if needed, but not conversion
-from kivy.uix.button import Button
-from kivy.uix.image import Image
 from kivy.uix.camera import Camera
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
@@ -173,11 +170,9 @@ class MainScreen(Screen):
 class AttendanceScreen(Screen):
     def __init__(self, **kwargs):
         super(AttendanceScreen, self).__init__(**kwargs)
-        # No InsightFace or DB interactions here
-        self.temp_image_path = None # Path for temporary capture
+        self.temp_image_path = None  # Path for temporary capture
 
         # --- Build UI ---
-        # Using main_layout consistently with RegisterScreen
         main_layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
 
         title_label = Label(
@@ -188,34 +183,44 @@ class AttendanceScreen(Screen):
         )
         main_layout.add_widget(title_label)
 
-        # Use a container for the camera
-        camera_container = BoxLayout(size_hint_y=1) # Let it take available vertical space
+        # Camera container for dynamic control
+        self.camera_container = BoxLayout(size_hint_y=1)
 
-        # Initialize Camera
         try:
-
+            # Initialize camera once
             self.camera = Camera(resolution=(640, 480), play=False, index=1)
-            self.camera.rotation = -90  # or try -90 depending on your device
+            
+            # Rotation via canvas (more reliable than .rotation)
+            with self.camera.canvas.before:
+                from kivy.graphics import PushMatrix, Rotate
+                PushMatrix()
+                self.rot = Rotate(angle=-90, origin=self.camera.center)
+            with self.camera.canvas.after:
+                from kivy.graphics import PopMatrix
+                PopMatrix()
+
+            def update_rotation_origin(*_):
+                self.rot.origin = self.camera.center
+
+            if self.camera:
+                self.camera.bind(pos=update_rotation_origin, size=update_rotation_origin)
+
+
+            self.camera_container.add_widget(self.camera)
 
         except Exception as e:
             Logger.error(f"AttendanceScreen: Failed to initialize camera: {e}")
-            self.camera = None # Flag that camera is unavailable
-            # Optionally show a persistent error or disable functionality
+            self.camera = None
+            self.camera_container.add_widget(Label(text="Camera not available", color=(1, 0, 0, 1)))
 
-        if self.camera:
-            camera_container.add_widget(self.camera)
-        else:
-            # Show placeholder if camera failed
-            camera_container.add_widget(Label(text="Camera not available", color=(1,0,0,1)))
+        main_layout.add_widget(self.camera_container)
 
-        main_layout.add_widget(camera_container)
-
-        # Capture/Attendance Button
+        # Attendance Button
         self.capture_button = Button(
             text='Mark Attendance (Check-in / Check-out)',
             size_hint_y=None, height=dp(60),
             background_color=get_color_from_hex('#4CAF50'),
-            disabled=(self.camera is None) # Disable if camera failed
+            disabled=(self.camera is None)
         )
         self.capture_button.bind(on_press=self.trigger_attendance_check)
         main_layout.add_widget(self.capture_button)
@@ -240,35 +245,48 @@ class AttendanceScreen(Screen):
         main_layout.add_widget(self.back_button)
 
         self.add_widget(main_layout)
-        # No database table creation here
+
 
     def on_enter(self, *args):
+        """Called when the screen is displayed."""
         self.result_label.text = 'Status: Ready'
-        self.temp_image_path = None  # Reset temp path
+        self.temp_image_path = None
 
-        if self.camera:
-            Logger.info("AttendanceScreen: Scheduling delayed camera start.")
-            Clock.schedule_once(lambda dt: self.start_camera_safely(), 0.5)
-        else:
-            self.result_label.text = "Status: Camera unavailable"
+        try:
+            if self.camera:
+                self.camera.play = True
+                self.capture_button.disabled = False
+                Logger.info("AttendanceScreen: Camera started on enter.")
+            else:
+                Logger.error("AttendanceScreen: No camera instance available.")
+                self.capture_button.disabled = True
+                self.result_label.text = "Status: Camera unavailable"
+                self.show_popup("Camera Error", "Camera device could not be initialized.")
+        except Exception as e:
+            Logger.error(f"AttendanceScreen: Failed to start camera: {e}")
             self.capture_button.disabled = True
-            Logger.warning("AttendanceScreen: Camera is None.")
-            self.show_popup("Camera Error", "Camera device could not be initialized.")
+            self.show_popup("Camera Error", f"Could not start camera: {e}")
 
-        def on_leave(self, *args):
-            """Called when the screen is left."""
-            if hasattr(self, 'camera') and self.camera and self.camera.play:
+
+    def on_leave(self, *args):
+        """Called when the screen is left."""
+        if self.camera:
+            try:
                 self.camera.play = False
-                Logger.info("AttendanceScreen: Camera stopped.")
-            # Clean up any lingering popups or state if needed
-            self.dismiss_popup_if_exists()
+                Logger.info("AttendanceScreen: Camera stopped on leave.")
+            except Exception as e:
+                Logger.warning(f"AttendanceScreen: Error stopping camera: {e}")
+        self.dismiss_popup_if_exists()
+
+
 
     def start_camera_safely(self):
+        """Start the camera after delay with safety checks."""
         try:
-            self.camera.rotation = -90  # Rotate for portrait orientation
-            self.camera.play = True
-            Logger.info("AttendanceScreen: Camera started with delay.")
-            self.capture_button.disabled = False
+            if self.camera:
+                self.camera.play = True
+                Logger.info("AttendanceScreen: Camera started with delay.")
+                self.capture_button.disabled = False
         except Exception as e:
             Logger.error(f"AttendanceScreen: Error starting camera with delay: {e}")
             self.result_label.text = f"Error starting camera: {e}"
@@ -276,6 +294,7 @@ class AttendanceScreen(Screen):
                 self.camera.play = False
             self.capture_button.disabled = True
             self.show_popup("Camera Error", f"Could not start camera: {e}")
+
 
 
     def trigger_attendance_check(self, instance):
@@ -460,120 +479,108 @@ class RegisterScreen(Screen):
     def __init__(self, **kwargs):
         super(RegisterScreen, self).__init__(**kwargs)
         self.image_captured = False
-        self.temp_image_path = None # Path to temporarily saved image on tablet
-        # No InsightFace or DB initialization here
+        self.temp_image_path = None  # Path to temporarily saved image
+        self.camera = None
+
+        # Try initializing the camera here once
+        try:
+            self.camera = Camera(resolution=(640, 480), play=False, index=1)
+
+            # Rotation via canvas
+            with self.camera.canvas.before:
+                from kivy.graphics import PushMatrix, Rotate
+                PushMatrix()
+                self.rot = Rotate(angle=-90, origin=self.camera.center)
+            with self.camera.canvas.after:
+                from kivy.graphics import PopMatrix
+                PopMatrix()
+
+            def update_rotation_origin(*_):
+                self.rot.origin = self.camera.center
+
+            if self.camera:
+                self.camera.bind(pos=update_rotation_origin, size=update_rotation_origin)
+
+
+        except Exception as e:
+            Logger.error(f"Camera: Failed to initialize camera: {e}")
+            self.camera = None
 
     def on_enter(self):
-        # --- Clear existing widgets if any ---
         self.clear_widgets()
-
-        # Reset state
         self.image_captured = False
         self.temp_image_path = None
 
-        # --- Build the UI dynamically ---
         main_layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
 
-        # Title
-        title = Label(
-            text='Register New User', font_size=dp(24), size_hint_y=None, height=dp(50)
-        )
+        title = Label(text='Register New User', font_size=dp(24), size_hint_y=None, height=dp(50))
         main_layout.add_widget(title)
 
-        # Form layout
         form_layout = GridLayout(cols=2, spacing=dp(10), size_hint_y=None, height=dp(120))
-
-        # Employee Name
         form_layout.add_widget(Label(text='Employee Name:', halign='right'))
         self.name_input = TextInput(multiline=False, write_tab=False)
         form_layout.add_widget(self.name_input)
 
-        # Employee ID
         form_layout.add_widget(Label(text='Employee ID:', halign='right'))
         self.id_input = TextInput(multiline=False, write_tab=False)
         form_layout.add_widget(self.id_input)
 
         main_layout.add_widget(form_layout)
 
-        # Camera button
         self.camera_button = Button(
-            text='Capture Face', background_color=get_color_from_hex('#2196F3'),
+            text='Capture Face',
+            background_color=get_color_from_hex('#2196F3'),
             size_hint_y=None, height=dp(50)
         )
         self.camera_button.bind(on_press=self.toggle_camera)
         main_layout.add_widget(self.camera_button)
 
-        # Camera and preview area
-        self.camera_layout = BoxLayout(orientation='vertical', spacing=dp(5)) # Added spacing
+        self.camera_layout = BoxLayout(orientation='vertical', spacing=dp(5))
+        self.camera_container = BoxLayout(size_hint_y=None, height=dp(240), pos_hint={'center_x': 0.5})
+        self.camera_layout.add_widget(self.camera_container)
 
-        # Camera widget - initially not added
-        # Try index=0 first. If multiple cameras, you might need to adjust.
-        # Handle potential camera initialization errors gracefully.
-        try:
-            self.camera = Camera(resolution=(640, 480), play=False, index=1)
-            self.camera.rotation = -90  # or try -90 depending on your device
-
-            # Set texture size explicitly if preview looks stretched/squashed
-            # self.camera.texture_size = self.camera.resolution
-        except Exception as e:
-             Logger.error(f"Camera: Failed to initialize camera: {e}")
-             self.camera = None # Flag that camera is unavailable
-             self.show_popup("Camera Error", "Could not initialize camera device.")
-             # Disable camera features if camera failed
-             self.camera_button.disabled = True
-
-
-        # Preview image
         self.preview = Image(
             source='', size_hint=(None, None), size=(dp(320), dp(240)),
             pos_hint={'center_x': 0.5}, allow_stretch=True, keep_ratio=True
         )
 
-        # Will add either camera or preview to this layout
-        self.camera_container = BoxLayout(size_hint_y=None, height=dp(240), pos_hint={'center_x': 0.5})
-        self.camera_layout.add_widget(self.camera_container)
-
-        # Capture button (only add if camera initialized)
         if self.camera:
             self.capture_button = Button(
-                text='Take Photo', background_color=get_color_from_hex('#4CAF50'),
+                text='Take Photo',
+                background_color=get_color_from_hex('#4CAF50'),
                 size_hint_y=None, height=dp(50), disabled=True
             )
             self.capture_button.bind(on_press=self.capture_photo)
             self.camera_layout.add_widget(self.capture_button)
         else:
-             self.capture_button = None # No capture button if no camera
+            self.capture_button = None
+            self.camera_button.disabled = True
+            self.show_popup("Camera Error", "Could not initialize camera device.")
 
         main_layout.add_widget(self.camera_layout)
 
-        # Register and Back buttons
         buttons_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-
         back_button = Button(text='Back to Main', background_color=get_color_from_hex('#9E9E9E'))
         back_button.bind(on_press=self.go_back)
         buttons_layout.add_widget(back_button)
 
         self.register_button = Button(text='Register User', background_color=get_color_from_hex('#FF9800'))
-        self.register_button.bind(on_press=self.trigger_registration) # Renamed method
+        self.register_button.bind(on_press=self.trigger_registration)
         buttons_layout.add_widget(self.register_button)
 
         main_layout.add_widget(buttons_layout)
-
         self.add_widget(main_layout)
-        # No database creation here
 
     def toggle_camera(self, instance):
-        if not self.camera: # Camera failed to init
+        if not self.camera:
             self.show_popup("Camera Error", "Camera is not available.")
             return
 
         if not self.camera.play:
-            # Start camera
             try:
                 self.camera_container.clear_widgets()
-                # self.camera.index = 0 # Usually not needed unless switching
                 self.camera.play = True
-                self.camera_container.add_widget(self.camera) # Add camera widget
+                self.camera_container.add_widget(self.camera)
                 self.camera_button.text = 'Cancel Capture'
                 if self.capture_button:
                     self.capture_button.disabled = False
@@ -581,7 +588,7 @@ class RegisterScreen(Screen):
             except Exception as e:
                 Logger.error(f"Camera: Error starting camera: {e}")
                 self.show_popup("Camera Error", f"Could not start camera: {e}")
-                self.camera.play = False # Ensure state is correct
+                self.camera.play = False
                 self.camera_container.clear_widgets()
                 if self.preview.source and self.image_captured:
                     self.camera_container.add_widget(self.preview)
@@ -589,7 +596,6 @@ class RegisterScreen(Screen):
                 if self.capture_button:
                     self.capture_button.disabled = True
         else:
-            # Stop camera
             self.camera.play = False
             self.camera_container.clear_widgets()
             if self.preview.source and self.image_captured:
@@ -605,15 +611,12 @@ class RegisterScreen(Screen):
             return
 
         try:
-            # Use app's user_data_dir for temporary storage (platform-independent)
             app = App.get_running_app()
-            # Ensure the directory exists within the app's safe space
             temp_dir = os.path.join(app.user_data_dir, 'temp_captures')
             if not os.path.exists(temp_dir):
                 os.makedirs(temp_dir)
 
             timestamp = int(time.time())
-            # Temporary filename, format doesn't matter much here as Kivy exports PNG
             self.temp_image_path = os.path.join(temp_dir, f"capture_{timestamp}.png")
 
             Logger.info(f"Capture: Saving temporary image to: {self.temp_image_path}")
@@ -621,17 +624,13 @@ class RegisterScreen(Screen):
             Logger.info(f"Capture: Successfully saved temporary PNG.")
 
             self.image_captured = True
-
-            # --- Update UI ---
             self.camera.play = False
 
-            # Show preview (use the temp path)
             self.preview.source = self.temp_image_path
-            self.preview.reload() # Important to force reload
+            self.preview.reload()
             self.camera_container.clear_widgets()
             self.camera_container.add_widget(self.preview)
 
-            # Update buttons
             self.camera_button.text = 'Retake Photo'
             if self.capture_button:
                 self.capture_button.disabled = True
@@ -639,13 +638,15 @@ class RegisterScreen(Screen):
         except Exception as e:
             Logger.error(f"Capture: Error during photo capture: {e}", exc_info=True)
             self.show_popup("Capture Error", f"Failed to capture photo: {e}")
-            # Reset state partially
             self.temp_image_path = None
             self.image_captured = False
-            if self.camera: self.camera.play = False # Ensure camera is stopped
+            if self.camera:
+                self.camera.play = False
             self.camera_container.clear_widgets()
             self.camera_button.text = 'Capture Face'
-            if self.capture_button: self.capture_button.disabled = True
+            if self.capture_button:
+                self.capture_button.disabled = True
+
 
     def trigger_registration(self, instance):
         """Validates input and starts the registration thread."""
