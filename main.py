@@ -30,6 +30,13 @@ from kivy.logger import Logger # Use Kivy's logger
 from kivy.utils import platform
 
 
+from kivy.utils import platform
+
+if platform == 'android':
+    try:
+        from android.permissions import request_permissions, Permission
+    except ImportError:
+        print("Warning: android.permissions module not available outside Android.")
 
 ADMIN_PASSWORD = "oye" 
 BACKEND_URL = "http://192.168.29.31:8000"
@@ -975,6 +982,16 @@ class AdminScreen(Screen):
 class AttendanceApp(App):
     def build(self):
         # Create screen manager
+        if platform == 'android':
+            try:
+                request_permissions([
+                    Permission.CAMERA,
+                    Permission.WRITE_EXTERNAL_STORAGE,
+                    Permission.READ_EXTERNAL_STORAGE
+                ])
+            except Exception as e:
+                print(f"Permission request failed: {e}")
+                
         sm = ScreenManager()
         
         # Add screens
