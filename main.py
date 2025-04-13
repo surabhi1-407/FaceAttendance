@@ -193,7 +193,10 @@ class AttendanceScreen(Screen):
 
         # Initialize Camera
         try:
+
             self.camera = Camera(resolution=(640, 480), play=False, index=1)
+            self.camera.rotation = -90  # or try -90 depending on your device
+
         except Exception as e:
             Logger.error(f"AttendanceScreen: Failed to initialize camera: {e}")
             self.camera = None # Flag that camera is unavailable
@@ -240,34 +243,39 @@ class AttendanceScreen(Screen):
         # No database table creation here
 
     def on_enter(self, *args):
-        """Called when the screen is displayed."""
         self.result_label.text = 'Status: Ready'
-        self.temp_image_path = None # Reset temp path
+        self.temp_image_path = None  # Reset temp path
 
         if self.camera:
-            try:
-                self.camera.play = True
-                Logger.info("AttendanceScreen: Camera started.")
-                self.capture_button.disabled = False # Ensure enabled if camera is ok
-            except Exception as e:
-                Logger.error(f"AttendanceScreen: Error starting camera on enter: {e}")
-                self.result_label.text = f"Error starting camera: {e}"
-                if self.camera: self.camera.play = False
-                self.capture_button.disabled = True
-                self.show_popup("Camera Error", f"Could not start camera: {e}")
+            Logger.info("AttendanceScreen: Scheduling delayed camera start.")
+            Clock.schedule_once(lambda dt: self.start_camera_safely(), 0.5)
         else:
-             self.result_label.text = "Status: Camera unavailable"
-             self.capture_button.disabled = True
-             # Maybe show a popup once if camera failed init
-             # self.show_popup("Camera Error", "Camera device could not be initialized.")
+            self.result_label.text = "Status: Camera unavailable"
+            self.capture_button.disabled = True
+            Logger.warning("AttendanceScreen: Camera is None.")
+            self.show_popup("Camera Error", "Camera device could not be initialized.")
 
-    def on_leave(self, *args):
-        """Called when the screen is left."""
-        if hasattr(self, 'camera') and self.camera and self.camera.play:
-            self.camera.play = False
-            Logger.info("AttendanceScreen: Camera stopped.")
-        # Clean up any lingering popups or state if needed
-        self.dismiss_popup_if_exists()
+        def on_leave(self, *args):
+            """Called when the screen is left."""
+            if hasattr(self, 'camera') and self.camera and self.camera.play:
+                self.camera.play = False
+                Logger.info("AttendanceScreen: Camera stopped.")
+            # Clean up any lingering popups or state if needed
+            self.dismiss_popup_if_exists()
+
+    def start_camera_safely(self):
+        try:
+            self.camera.rotation = -90  # Rotate for portrait orientation
+            self.camera.play = True
+            Logger.info("AttendanceScreen: Camera started with delay.")
+            self.capture_button.disabled = False
+        except Exception as e:
+            Logger.error(f"AttendanceScreen: Error starting camera with delay: {e}")
+            self.result_label.text = f"Error starting camera: {e}"
+            if self.camera:
+                self.camera.play = False
+            self.capture_button.disabled = True
+            self.show_popup("Camera Error", f"Could not start camera: {e}")
 
 
     def trigger_attendance_check(self, instance):
@@ -503,6 +511,8 @@ class RegisterScreen(Screen):
         # Handle potential camera initialization errors gracefully.
         try:
             self.camera = Camera(resolution=(640, 480), play=False, index=1)
+            self.camera.rotation = -90  # or try -90 depending on your device
+
             # Set texture size explicitly if preview looks stretched/squashed
             # self.camera.texture_size = self.camera.resolution
         except Exception as e:
@@ -991,7 +1001,7 @@ class AttendanceApp(App):
                 ])
             except Exception as e:
                 print(f"Permission request failed: {e}")
-                
+
         sm = ScreenManager()
         
         # Add screens
