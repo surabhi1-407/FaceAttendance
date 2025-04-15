@@ -26,7 +26,8 @@ from kivy.uix.image import Image
 from kivy.uix.camera import Camera
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
-from kivy.logger import Logger # Use Kivy's logger
+from kivy.logger import Logger
+from kivy.graphics.transformation import Matrix # Use Kivy's logger
 from kivy.utils import platform
 
 
@@ -38,7 +39,7 @@ if platform == 'android':
     except ImportError:
         print("Warning: android.permissions module not available outside Android.")
 
-ADMIN_PASSWORD = "oye" 
+ADMIN_PASSWORD = "123" 
 BACKEND_URL = "http://192.168.29.31:8000"
 REGISTER_ENDPOINT = f"{BACKEND_URL}/register"
 RECOGNIZE_ENDPOINT = f"{BACKEND_URL}/recognize_attendance"
@@ -194,8 +195,9 @@ class AttendanceScreen(Screen):
         # Initialize Camera
         try:
 
-            self.camera = Camera(resolution=(640, 480), play=False, index=1)
-            self.camera.rotation = 90  # or try -90 depending on your device
+            cam_index = 1 if platform == 'android' else 0
+            self.camera = Camera(resolution=(640, 480), play=False, index=cam_index)
+            self.camera.transform = Matrix().rotate(1.5708, 0, 0, 1)  # 90 degrees rotation using matrix  # or try -90 depending on your device
 
         except Exception as e:
             Logger.error(f"AttendanceScreen: Failed to initialize camera: {e}")
@@ -265,7 +267,7 @@ class AttendanceScreen(Screen):
 
     def start_camera_safely(self):
         try:
-            self.camera.rotation = -90  # Rotate for portrait orientation
+            self.camera.transform = Matrix().rotate(1.5708, 0, 0, 1)  # 90 degrees rotation using matrix  # Rotate for portrait orientation
             self.camera.play = True
             Logger.info("AttendanceScreen: Camera started with delay.")
             self.capture_button.disabled = False
@@ -510,8 +512,9 @@ class RegisterScreen(Screen):
         # Try index=0 first. If multiple cameras, you might need to adjust.
         # Handle potential camera initialization errors gracefully.
         try:
-            self.camera = Camera(resolution=(640, 480), play=False, index=1)
-            self.camera.rotation = 90  # or try -90 depending on your device
+            cam_index = 1 if platform == 'android' else 0
+            self.camera = Camera(resolution=(640, 480), play=False, index=cam_index)
+            self.camera.transform = Matrix().rotate(1.5708, 0, 0, 1)  # 90 degrees rotation using matrix  # or try -90 depending on your device
 
             # Set texture size explicitly if preview looks stretched/squashed
             # self.camera.texture_size = self.camera.resolution
