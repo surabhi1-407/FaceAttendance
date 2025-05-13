@@ -39,8 +39,8 @@ if platform == 'android':
     except ImportError:
         print("Warning: android.permissions module not available outside Android.")
 
-ADMIN_PASSWORD = "123" 
-BACKEND_URL = "http://192.168.29.31:8000"
+ADMIN_PASSWORD = "123" #can be changed, hard coded for trial purposes
+BACKEND_URL = "http://{your-pc-ip}:8000"  #replace your pc ip here
 REGISTER_ENDPOINT = f"{BACKEND_URL}/register"
 RECOGNIZE_ENDPOINT = f"{BACKEND_URL}/recognize_attendance"
 ATTENDANCE_LOG_ENDPOINT = f"{BACKEND_URL}/attendance_log"
